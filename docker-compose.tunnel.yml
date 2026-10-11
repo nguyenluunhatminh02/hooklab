@@ -1,0 +1,27 @@
+# Cloudflare Tunnel overrides — the third file of the production chain
+# (docs/DEPLOY.md "Cloudflare Tunnel"):
+#
+#   docker compose -p hooklab-prod \
+#     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tunnel.yml \
+#     --env-file .env.prod up -d --build
+#
+# Why a third file: docker-compose.prod.yml gives caddy a public-domain site
+# with Let's Encrypt, which needs inbound 80/443. This machine is behind NAT —
+# the running cloudflared tunnel (user service cloudflared-tunnel.service)
+# terminates TLS at the Cloudflare edge and forwards the hostname to loopback.
+# Only the caddy service changes here; postgres/app hardening stays in the prod
+# file. Do NOT pass this file to the dev `docker compose up` workflow.
+
+services:
+  caddy:
+    # Loopback-only publish: cloudflared runs on this host and reaches
+    # 127.0.0.1:8095. 8095 not 8090 — 8090 is the sentiment stack's
+    # conventional port and would collide if that stack comes back up.
+    # `!override` replaces the base list ("80:80", "443:443"); a plain merge
+    # would append instead and still bind both public ports.
+    ports: !override
+      - "127.0.0.1:8095:80"
+    # Mounts merge by target path, so this replaces the Caddyfile.prod mount
+    # that docker-compose.prod.yml installs at the same /etc/caddy/Caddyfile.
+    volumes:
+      - ./docker/Caddyfile.tunnel:/etc/caddy/Caddyfile:ro

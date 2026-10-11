@@ -1,0 +1,31 @@
+# Production overrides — always pair with the base file (docs/DEPLOY.md §2.5):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Passing -f explicitly disables docker-compose.override.yml auto-loading, so
+# nothing from local dev leaks into a prod deploy.
+
+services:
+  postgres:
+    # M-1 hardening: the base file publishes 5432:5432 on 0.0.0.0 for local dev.
+    # `!reset` replaces that list instead of appending (plain merge concatenates
+    # ports, which would collide on the same host port). After this, postgres is
+    # reachable only on the compose network — admin access is `docker compose
+    # exec postgres psql`, backups likewise (DEPLOY.md §5.2).
+    ports: !reset []
+    restart: unless-stopped
+
+  app:
+    # M-1 hardening: same as postgres — 3000 stays unpublished; caddy reaches it
+    # as app:3000 over the compose network. Verify post-deploy: ss -tlnp must
+    # show no :3000 listener.
+    ports: !reset []
+    restart: unless-stopped
+
+  caddy:
+    # Domain site block (auto TLS via Let's Encrypt) instead of the dev :80
+    # bind. Volume mounts merge by target path, so this replaces the base
+    # ./docker/Caddyfile mount at /etc/caddy/Caddyfile.
+    volumes:
+      - ./docker/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped

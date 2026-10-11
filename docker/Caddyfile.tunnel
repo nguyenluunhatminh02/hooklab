@@ -1,0 +1,39 @@
+# Production site behind Cloudflare Tunnel — mounted by docker-compose.tunnel.yml
+# in place of the image's baked /etc/caddy/Caddyfile.
+#
+# Not the same as Caddyfile.prod: that file names a public domain so Caddy can
+# answer Let's Encrypt's HTTP-01 challenge. This machine has no inbound 80/443
+# (behind NAT), so TLS terminates at the Cloudflare edge and the tunnel delivers
+# plain HTTP to 127.0.0.1:8095. The site block therefore binds bare `:80` —
+# no hostname, no ACME attempt. The HSTS header still reaches the browser,
+# because the edge→browser leg is HTTPS.
+#
+# Chain: cloudflared (host, user service) -> 127.0.0.1:8095 (this container)
+#        -> app:3000 over the compose network.
+:80 {
+	encode gzip
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+
+	handle /ingest/* {
+		reverse_proxy app:3000
+	}
+
+	handle /health {
+		reverse_proxy app:3000
+	}
+
+	handle /ready {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

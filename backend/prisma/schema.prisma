@@ -1,0 +1,155 @@
+// prisma/schema.prisma — HookLab (docs/design/01-prisma-schema.md §1 + BUILD_PLAN §2.1 deltas)
+
+generator client {
+  provider = "prisma-client"          // prisma-client-js is deprecated in v7
+  output   = "../src/generated/prisma" // output is REQUIRED in Prisma 7
+}
+
+datasource db {
+  provider = "postgresql"
+  // url lives in prisma.config.ts — a `url` line here is a hard validation error in v7 (P1012)
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+enum DestinationMethod {
+  POST
+  PUT
+  PATCH
+}
+
+enum RecordStatus {
+  VERIFIED
+  REJECTED
+}
+
+enum RejectReason {
+  MISSING_SIGNATURE
+  INVALID_SIGNATURE
+  RATE_LIMITED
+  BODY_TOO_LARGE
+}
+
+enum ReplayError {
+  REPLAY_TARGET_BLOCKED
+  REPLAY_TIMEOUT
+  REPLAY_UPSTREAM_ERROR
+}
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  memberships  Membership[]
+}
+
+model Workspace {
+  id          Int          @id @default(autoincrement())
+  name        String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  memberships Membership[]
+  subscribers Subscriber[]
+}
+
+model Membership {
+  id          Int       @id @default(autoincrement())
+  workspaceId Int
+  userId      Int
+  role        Role
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Ingest endpoint + destination
+// ---------------------------------------------------------------------------
+
+model Subscriber {
+  id                  Int                @id @default(autoincrement())
+  workspaceId         Int
+  name                String
+  ingestToken         String             @unique // 32 random bytes as hex → 64 chars (SPEC)
+  hmacSecret          String             // plaintext by necessity: server computes HMAC over it
+  destinationMethod   DestinationMethod  @default(POST)
+  destinationUrl      String
+  destinationHeaders  Json?              // optional per CreateSubscriberDto
+  destinationAuth     Json?              // outbound auth config {type, ...}; plaintext by necessity — server must send it
+  signatureHeaderName String             @default("X-Hub-Signature-256")
+  revokedAt           DateTime?          // ingest answers 410, writes no record
+  rotatedAt           DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  workspace           Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  records             WebhookRecord[]
+  rateLimitWindows    RateLimitWindow[]
+
+  @@index([workspaceId])
+}
+
+// ---------------------------------------------------------------------------
+// Captured request (originals AND replays share this table)
+// ---------------------------------------------------------------------------
+
+model WebhookRecord {
+  id           Int            @id @default(autoincrement())
+  subscriberId Int
+  method       String
+  url          String         // full original request URL (path + query)
+  headers      Json           // WHITELIST only, keys lowercased — captured before verify
+  rawBody      String         @db.Text // exact received bytes as utf8; ≤ 1MB enforced in middleware
+  status       RecordStatus
+  rejectReason RejectReason?  // null iff status = VERIFIED
+  eventType    String?        // best-effort: body.type / body.event / x-event-type header
+  receivedAt   DateTime       @default(now())
+
+  // BUILD_PLAN §2.1 delta (C16): exact received bytes; sentinel MAX_BODY_BYTES + 1 on overflow
+  bodyBytes Int
+
+  // Replay: this row's own request copy + the outbound leg's outcome
+  replayOfId       Int?
+  replayOf         WebhookRecord?  @relation("RecordReplay", fields: [replayOfId], references: [id], onDelete: Cascade)
+  replays          WebhookRecord[] @relation("RecordReplay")
+  replayTargetUrl  String?         // destination actually targeted for this replay
+  responseStatus   Int?            // upstream status; null on timeout/transport failure
+  responseBody     String?  @db.Text // truncated at RESPONSE_BODY_MAX_BYTES
+  replayError      ReplayError?
+  replayedAt       DateTime?
+  durationMs       Int?
+
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@index([subscriberId, receivedAt]) // timeline list (receivedAt DESC, id DESC via backward scan)
+  @@index([receivedAt])               // 7-day retention sweep + oldestKeptAt
+  @@index([replayOfId])               // replay children lookup + efficient cascade delete
+}
+
+// ---------------------------------------------------------------------------
+// Sliding-window rate limit — one row per ADMITTED request only
+// ---------------------------------------------------------------------------
+
+model RateLimitWindow {
+  id           Int        @id @default(autoincrement())
+  subscriberId Int
+  occurredAt   DateTime   @default(now())
+  subscriber   Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@index([subscriberId, occurredAt])
+}

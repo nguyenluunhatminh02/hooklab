@@ -1,0 +1,25 @@
+:80 {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+
+	handle /ingest/* {
+		reverse_proxy app:3000
+	}
+
+	handle /health {
+		reverse_proxy app:3000
+	}
+
+	handle /ready {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

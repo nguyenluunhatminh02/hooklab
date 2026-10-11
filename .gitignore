@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.prod
+dist/
+backend/src/generated/
+*.log
+caddy_data/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+.playwright-mcp/
+*.tsbuildinfo

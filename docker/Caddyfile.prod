@@ -1,0 +1,35 @@
+# Production site — mounted by docker-compose.prod.yml over /etc/caddy/Caddyfile.
+#
+# The domain site address is what triggers Caddy's automatic HTTPS: with a bare
+# `:80` bind Caddy never asks Let's Encrypt for a certificate (docs/DEPLOY.md
+# §2.4). Substitute your real domain (DEPLOY.md §1 DNS A record); port 80 then
+# serves only the ACME HTTP-01 challenge and 308 redirects everything else.
+# The dev file docker/Caddyfile keeps its `:80` bind for local `docker compose up`.
+hooklab.example.com {
+	encode gzip
+
+	# DEPLOY.md §2.6 verifies this header on https://…/health.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+
+	handle /ingest/* {
+		reverse_proxy app:3000
+	}
+
+	handle /health {
+		reverse_proxy app:3000
+	}
+
+	handle /ready {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hooklab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hooklab}
+      POSTGRES_DB: ${POSTGRES_DB:-hooklab}
+    ports:
+      # Host port overridable via POSTGRES_HOST_PORT (.env) — defaults to 5432
+      # for fresh machines; this machine uses 5435 (5432 held by another project).
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hooklab} -d ${POSTGRES_DB:-hooklab}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    # Repo-root context: the Dockerfile COPYs package-lock.json, backend/ and
+    # docker/app-entrypoint.sh, none of which exist inside ./backend. Matches
+    # the CI docker-build job (`docker build -f backend/Dockerfile .`).
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["sh", "/opt/hooklab/app-entrypoint.sh"]
+    volumes:
+      - ./docker/app-entrypoint.sh:/opt/hooklab/app-entrypoint.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hooklab}:${POSTGRES_PASSWORD:-hooklab}@postgres:5432/${POSTGRES_DB:-hooklab}
+      JWT_SECRET: ${JWT_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      PORT: "3000"
+      TZ: UTC
+    ports:
+      - "3000:3000"
+
+  caddy:
+    # Repo-root context: the Dockerfile COPYs the root lockfile and docker/Caddyfile.
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+
+volumes:
+  pgdata:
+  caddy_data:

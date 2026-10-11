@@ -1,0 +1,95 @@
+/* Replay surfaces only — kept out of app.css so the timeline/detail styles
+   can land independently. No gradients, hairline borders, tokens only. */
+
+.replay-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.replay-editor .field textarea {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  min-height: 12rem;
+  resize: vertical;
+}
+
+.replay-reason {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+}
+
+.replay-comparison {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .replay-comparison {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.replay-col {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  min-width: 0;
+}
+
+.replay-col h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.replay-col .endpoint-row {
+  margin: 0 0 var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+/* Transport-error banner under the editor (04 §6): same construction as
+   .replay-reason, colored by failure class. Kinds come from replayErrors.ts —
+   blocked/revoked are terminal (danger), retryable ones lean on the accent. */
+.replay-banner {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+}
+
+.replay-banner[data-kind='blocked'],
+.replay-banner[data-kind='revoked'],
+.replay-banner[data-kind='tooLarge'] {
+  border-left-color: var(--color-danger);
+}
+
+.replay-banner[data-kind='upstream'],
+.replay-banner[data-kind='timeout'],
+.replay-banner[data-kind='network'] {
+  border-left-color: var(--color-accent);
+}
+
+.replay-banner-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.replay-banner-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* 400 SSRF block only: jump link to the subscriber edit form (04 §6). */
+.replay-banner-link {
+  display: inline-block;
+  margin: var(--space-1) 0 0;
+  font-size: 0.875rem;
+}

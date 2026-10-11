@@ -1,0 +1,19 @@
+# Defense-in-depth: both Dockerfiles already COPY selectively, so this only
+# keeps machine-local state and build artifacts out of the build context.
+# Every pattern is depth-agnostic (**/). Probe 2026-10-10: bare `.git` /
+# `test-results` / `*.log` match only at the context root, so the nested
+# backend/.env (machine-local secret, README quick-start) was NOT excluded —
+# fixed by **/ forms, verified: only `.env.example` (both depths) survives.
+**/.git
+**/.claude
+**/docs
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/.playwright-mcp
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
